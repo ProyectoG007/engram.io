@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # --------------------------------------------
   # CAPA 1: FRONTEND (Next.js)
