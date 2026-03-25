@@ -28,12 +28,7 @@
 - [ ] Agregar métricas básicas (latencia API, errores por endpoint, uso de tokens IA).
 - [ ] Preparar checklist de release (versionado, changelog, rollback).
 
-## Docker y Deploy
 
-- [ ] Revisar `Dockerfile.web`, `Dockerfile.bot` y `rag/Dockerfile` para optimizar tamaño de imagen.
-- [ ] Confirmar `docker-compose.yml` con healthchecks y dependencias correctas.
-- [ ] Definir estrategia de despliegue (staging/prod) y variables por entorno.
-- [ ] Validar que no se incluyan secretos en imágenes ni repositorio.
 
 ## Documentación
 

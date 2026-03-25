@@ -88,15 +88,7 @@ npm run dev
 | `/create [nombre]` | Crear agente |
 | `/tasks` | Ver tareas activas |
 
-## Docker Deployment
 
-```bash
-# Desarrollo
-docker-compose up
-
-# Producción
-docker-compose -f docker-compose.yml up -d
-```
 
 ## Estructura del Proyecto
 
