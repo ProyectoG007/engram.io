@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # --------------------------------------------
+  # CAPA 1: FRONTEND (Next.js)
+  # --------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://bh_user:bh_password@postgres:5432/bh_saas
+      - REDIS_URL=redis://redis:6379
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=http://localhost:3000
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  # --------------------------------------------
+  # CAPA 4: RAG API (FastAPI)
+  # --------------------------------------------
+  rag-api:
+    build:
+      context: ./rag
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_INDEX_NAME=bh-saas-rag
+      - PINECONE_ENVIRONMENT=${PINECONE_ENVIRONMENT:-us-east-1}
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+      - LANGCHAIN_PROJECT=bh-saas
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # --------------------------------------------
+  # CAPA 5: PERSISTENCIA
+  # --------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=bh_user
+      - POSTGRES_PASSWORD=bh_password
+      - POSTGRES_DB=bh_saas
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # --------------------------------------------
+  # TELEGRAM BOT
+  # --------------------------------------------
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY}
+      - DATABASE_URL=postgresql://bh_user:bh_password@postgres:5432/bh_saas
+    depends_on:
+      - postgres
+      - rag-api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

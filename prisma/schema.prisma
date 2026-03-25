@@ -1,0 +1,356 @@
+// ============================================
+// CAPA 5: PERSISTENCIA
+// Schema Prisma - Base de datos relacional
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --------------------------------------------
+// USUARIOS Y AUTENTICACIÓN
+// --------------------------------------------
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  
+  // Perfil
+  role          Role      @default(USER)
+  plan          Plan      @default(FREE)
+  
+  // Preferences
+  preferences   Json?
+  
+  // Relaciones
+  agents        Agent[]
+  tasks         Task[]
+  conversations Conversation[]
+  documents     Document[]
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@map("users")
+}
+
+enum Role {
+  USER
+  ADMIN
+  CTO
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+// --------------------------------------------
+// NEXT-AUTH MODELS
+// --------------------------------------------
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// --------------------------------------------
+// AGENTES IA (CAPA 8)
+// --------------------------------------------
+model Agent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  type        AgentType @default(CUSTOM)
+  provider    AIProvider @default(TOGETHER)
+  
+  // Configuración
+  config      Json?    // Parámetros específicos del agente
+  systemPrompt String? @db.Text
+  
+  // Estado
+  status      AgentStatus @default(ACTIVE)
+  
+  // Metricas
+  usageCount  Int       @default(0)
+  lastUsedAt  DateTime?
+  
+  // Relaciones
+  tasks       Task[]
+  specs       AgentSpec[]
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("agents")
+}
+
+enum AgentType {
+  CHATBOT
+  SCRAPER
+  CODER
+  ANALYZER
+  CUSTOM
+}
+
+enum AIProvider {
+  TOGETHER
+  GEMINI
+  ANTHROPIC
+  KIMI
+}
+
+enum AgentStatus {
+  ACTIVE
+  INACTIVE
+  TRAINING
+  ERROR
+}
+
+// --------------------------------------------
+// TAREAS Y CONVERSACIONES
+// --------------------------------------------
+model Task {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId     String?
+  agent       Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  
+  title       String
+  description String?
+  
+  type        TaskType @default(CHAT)
+  status      TaskStatus @default(PENDING)
+  priority    Priority  @default(MEDIUM)
+  
+  // Input/Output
+  input       Json?
+  output      Json?
+  
+  // RAG Context
+  ragContext  Json?
+  
+  // Errores
+  error       String?
+  
+  // Layer tracking (Protocolo TITAN)
+  currentLayer Int     @default(1)
+  
+  startedAt   DateTime?
+  completedAt DateTime?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("tasks")
+}
+
+enum TaskType {
+  CHAT
+  SCRAPE
+  CODE
+  ANALYZE
+  RAG_QUERY
+}
+
+enum TaskStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// --------------------------------------------
+// CONVERSACIONES (CHAT)
+// --------------------------------------------
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  agentId   String?
+  title     String?
+  
+  messages  Message[]
+  
+  // RAG
+  ragEnabled Boolean @default(false)
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  @@map("conversations")
+}
+
+model Message {
+  id              String   @id @default(cuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  role            MessageRole
+  content         String   @db.Text
+  
+  // AI Response metadata
+  model           String?
+  tokensUsed      Int?
+  latency         Int?     // ms
+  
+  // RAG sources
+  sources         Json?
+  
+  createdAt       DateTime  @default(now())
+  
+  @@map("messages")
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+// --------------------------------------------
+// DOCUMENTOS Y KNOWLEDGE BASE (RAG)
+// --------------------------------------------
+model Document {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title     String
+  source    String?
+  mimeType  String?
+  
+  // Chunking
+  chunks    Int      @default(0)
+  
+  // Estado de indexación
+  indexed   Boolean  @default(false)
+  indexId   String?  // ID en Pinecone
+  
+  // Metadata
+  metadata  Json?
+  
+  // Archivo
+  filePath  String?
+  fileSize  Int?
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  @@map("documents")
+}
+
+// --------------------------------------------
+// ESPECIFICACIONES (OPENSEEC - CAPA 6)
+// --------------------------------------------
+model AgentSpec {
+  id        String   @id @default(cuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  name      String
+  version   String   @default("1.0.0")
+  
+  // Contenido OpenSpec
+  content   String   @db.Text
+  
+  // Capas del Protocolo TITAN
+  layers    Json?    // Array de {layer: 1-9, description, status}
+  
+  // Estado
+  status    SpecStatus @default(DRAFT)
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  @@unique([agentId, version])
+  @@map("agent_specs")
+}
+
+enum SpecStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  ARCHIVED
+}
+
+// --------------------------------------------
+// LOGS Y AUDITORIA (CAPA 7)
+// --------------------------------------------
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  
+  action    String
+  entity    String
+  entityId  String?
+  
+  details   Json?
+  
+  ip        String?
+  userAgent String?
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
