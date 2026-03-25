@@ -30,7 +30,7 @@ export async function getRedisClient() {
       url: process.env.REDIS_URL || "redis://localhost:6379",
     });
     
-    redisClient.on("error", (err) => {
+    redisClient.on("error", (err: unknown) => {
       console.error("Redis Client Error:", err);
     });
     

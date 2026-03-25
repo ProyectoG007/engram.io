@@ -469,6 +469,3 @@ async function main() {
 
 // Run if executed directly
 main().catch(console.error);
-
-// Export for testing
-export { TelegramBot };

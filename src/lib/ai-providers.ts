@@ -4,8 +4,23 @@
 // ============================================
 
 import OpenAI from "openai";
+import type { ChatCompletion } from "openai/resources/chat/completions";
 
-export type AIProviderType = "openai" | "gemini" | "anthropic";
+export type AIProviderType = "openai" | "together" | "gemini" | "anthropic";
+
+export interface ChatCompletionResponse {
+  choices: Array<{
+    message: {
+      role: "assistant";
+      content: string;
+    };
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+}
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -36,17 +51,31 @@ export class OpenAIProvider {
     this.baseURL = baseURL;
   }
   
-  async chat(options: ChatCompletionOptions) {
+  async chat(options: ChatCompletionOptions): Promise<ChatCompletionResponse> {
     const response = await this.client.chat.completions.create({
       model: options.model,
       messages: options.messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 2048,
       top_p: options.topP ?? 0.9,
-      stream: options.stream ?? false,
-    });
+      stream: false,
+    }) as ChatCompletion;
     
-    return response;
+    return {
+      choices: response.choices.map((choice: ChatCompletion["choices"][number]) => ({
+        message: {
+          role: "assistant",
+          content: typeof choice.message.content === "string" ? choice.message.content : "",
+        },
+      })),
+      usage: response.usage
+        ? {
+            prompt_tokens: response.usage.prompt_tokens,
+            completion_tokens: response.usage.completion_tokens,
+            total_tokens: response.usage.total_tokens,
+          }
+        : undefined,
+    };
   }
   
   async embeddings(input: string[]) {
@@ -56,6 +85,12 @@ export class OpenAIProvider {
     });
     
     return response.data.map(d => d.embedding);
+  }
+}
+
+export class TogetherProvider extends OpenAIProvider {
+  constructor(apiKey: string) {
+    super(apiKey, "https://api.together.xyz/v1");
   }
 }
 
@@ -70,7 +105,7 @@ export class GeminiProvider {
     this.apiKey = apiKey;
   }
   
-  async chat(options: ChatCompletionOptions) {
+  async chat(options: ChatCompletionOptions): Promise<ChatCompletionResponse> {
     const response = await fetch(
       `${this.baseUrl}/models/${options.model}:generateContent?key=${this.apiKey}`,
       {
@@ -114,7 +149,7 @@ export class AnthropicProvider {
     this.apiKey = apiKey;
   }
   
-  async chat(options: ChatCompletionOptions) {
+  async chat(options: ChatCompletionOptions): Promise<ChatCompletionResponse> {
     const systemPrompt = options.messages.find(m => m.role === "system");
     const userMessages = options.messages.filter(m => m.role !== "system");
     
@@ -157,7 +192,7 @@ export class AnthropicProvider {
 // AI ROUTER
 // --------------------------------------------
 export class AIRouter {
-  private providers: Map<AIProviderType, OpenAIProvider | GeminiProvider | AnthropicProvider>;
+  private providers: Map<AIProviderType, OpenAIProvider | TogetherProvider | GeminiProvider | AnthropicProvider>;
   
   constructor() {
     this.providers = new Map();
@@ -168,6 +203,9 @@ export class AIRouter {
       switch (type) {
         case "openai":
           this.providers.set(type, new OpenAIProvider(apiKey, baseURL));
+          break;
+        case "together":
+          this.providers.set(type, new TogetherProvider(apiKey));
           break;
         case "gemini":
           this.providers.set(type, new GeminiProvider(apiKey));

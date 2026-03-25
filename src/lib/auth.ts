@@ -8,8 +8,7 @@ import Google from "next-auth/providers/google";
 import GitHub from "next-auth/providers/github";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Provider } from "next-auth/providers";
-import { prisma } from "@/lib/prisma";
-import { AIProviders } from "@/lib/ai-providers";
+import { prisma } from "@/lib/db";
 
 export const providers = [
   Google({

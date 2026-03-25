@@ -3,7 +3,6 @@
 // Retrieval-Augmented Generation Service
 // ============================================
 
-import { Pinecone } from "@pinecone-database/pinecone";
 import { TogetherProvider, DEFAULT_MODELS } from "@/lib/ai-providers";
 import { getPineconeIndex, cacheGet, cacheSet } from "@/lib/db";
 import type { RagQueryInput, RagResponse } from "@/types";
@@ -30,15 +29,12 @@ export class EmbeddingService {
     // Formatear con "passage:" para documentos
     const formattedTexts = texts.map(t => `passage: ${t}`);
     
-    const embeddings = await this.provider.embeddings({
-      model: EMBEDDING_MODEL,
-      input: formattedTexts,
-    });
+    const embeddings = await this.provider.embeddings(formattedTexts);
     
     // Normalización L2
-    return embeddings.map(emb => {
-      const norm = Math.sqrt(emb.reduce((sum, val) => sum + val * val, 0));
-      return emb.map(val => val / norm);
+    return embeddings.map((emb: number[]) => {
+      const norm = Math.sqrt(emb.reduce((sum: number, val: number) => sum + val * val, 0));
+      return emb.map((val: number) => val / norm);
     });
   }
   
@@ -46,15 +42,12 @@ export class EmbeddingService {
     // Formatear con "query:" para consultas
     const formattedText = `query: ${text}`;
     
-    const embeddings = await this.provider.embeddings({
-      model: EMBEDDING_MODEL,
-      input: [formattedText],
-    });
+    const embeddings = await this.provider.embeddings([formattedText]);
     
     // Normalización L2
     const emb = embeddings[0];
-    const norm = Math.sqrt(emb.reduce((sum, val) => sum + val * val, 0));
-    return emb.map(val => val / norm);
+    const norm = Math.sqrt(emb.reduce((sum: number, val: number) => sum + val * val, 0));
+    return emb.map((val: number) => val / norm);
   }
 }
 
@@ -168,9 +161,9 @@ export class RetrieverService {
     
     // Filtrar por umbral y limitar
     const filtered = (results.matches || [])
-      .filter(match => match.score && match.score >= SIMILARITY_THRESHOLD)
+      .filter((match: { score?: number | null }) => Boolean(match.score && match.score >= SIMILARITY_THRESHOLD))
       .slice(0, topK)
-      .map(match => ({
+      .map((match: { id: string; score?: number | null; metadata?: Record<string, unknown> }) => ({
         id: match.id,
         content: (match.metadata?.content as string) || "",
         score: match.score!,
@@ -204,7 +197,7 @@ REGLAS IMPORTANTES:
     query: string,
     context: Array<{ content: string; metadata: Record<string, any> }>,
     customSystemPrompt?: string
-  ): Promise<{ answer: string; usage: any }> {
+  ): Promise<{ answer: string; usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined }> {
     // Construir contexto
     const contextText = context
       .map((doc, i) => `[Documento ${i + 1}]\nContenido: ${doc.content}`)
@@ -272,6 +265,8 @@ export class RAGPipeline {
       documents,
       input.systemPrompt
     );
+
+    const resolvedUsage = usage || {};
     
     const response: RagResponse = {
       answer,
@@ -283,9 +278,9 @@ export class RAGPipeline {
       })),
       model: LLM_MODEL,
       usage: {
-        promptTokens: usage.prompt_tokens || 0,
-        completionTokens: usage.completion_tokens || 0,
-        totalTokens: usage.total_tokens || 0,
+        promptTokens: resolvedUsage.prompt_tokens || 0,
+        completionTokens: resolvedUsage.completion_tokens || 0,
+        totalTokens: resolvedUsage.total_tokens || 0,
       },
     };
     
@@ -340,7 +335,7 @@ export class IndexerService {
       const batchSize = 100;
       for (let i = 0; i < vectors.length; i += batchSize) {
         const batch = vectors.slice(i, i + batchSize);
-        await index.upsert(batch);
+        await index.upsert({ records: batch });
       }
     }
     

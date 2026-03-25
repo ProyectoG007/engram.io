@@ -3,6 +3,7 @@
 // Agent Service - Gentle-AI Integration
 // ============================================
 
+import { TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getRAGPipeline } from "./rag-pipeline";
 import { aiRouter, DEFAULT_MODELS } from "@/lib/ai-providers";
@@ -175,6 +176,9 @@ export class MessageService {
     
     const providerType = agent.provider.toLowerCase() as "together" | "gemini" | "anthropic";
     const provider = aiRouter.getProvider(providerType, apiKeys[providerType]);
+    if (!provider) {
+      throw new Error(`Provider no configurado: ${providerType}`);
+    }
     
     // Obtener modelo
     const modelMap: Record<string, Record<string, string>> = {
@@ -210,7 +214,7 @@ export class MessageService {
         model: model,
         tokensUsed: usage.total_tokens,
         latency,
-        sources: input.ragEnabled ? context : null,
+        sources: input.ragEnabled && context ? { context } : undefined,
       },
     });
     
@@ -234,7 +238,6 @@ export class MessageService {
     return prisma.conversation.findMany({
       where: { userId },
       include: {
-        agent: { select: { name: true, type: true } },
         messages: {
           take: 1,
           orderBy: { createdAt: "desc" },
@@ -266,7 +269,7 @@ export class TaskService {
     });
   }
   
-  async updateTaskProgress(taskId: string, layer: number, status: string) {
+  async updateTaskProgress(taskId: string, layer: number, status: TaskStatus) {
     return prisma.task.update({
       where: { id: taskId },
       data: {
